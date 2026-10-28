@@ -1,0 +1,662 @@
+/*
+ * RSIP 牌桌视觉层
+ * 卡框 / 稀有度 / 闪卡光泽 / 点亮光晕 / 冰霜 / 宝石 / 树连线 / 结算按钮 / 揭示动画。
+ * 稀有度由内化天数（cumulativeLitDays）决定，阈值对齐里程碑：1 / 7 / 21 / 100 / 365。
+ * 状态表达不使用红色。
+ *
+ * 放在 components 层，Tailwind 工具类（hidden / absolute 等）可以覆盖这里的默认值；
+ * 文末的弹窗外观刻意不分层，用来覆盖 shadcn 弹窗自带的 bg-background。
+ */
+
+@layer components {
+
+/* ---------------- 牌桌背景 ---------------- */
+
+body {
+  background-color: var(--background);
+  background-image:
+    radial-gradient(1200px 600px at 50% -10%, hsl(224 40% 16% / 0.9), transparent 70%),
+    radial-gradient(800px 500px at 100% 100%, hsl(40 60% 30% / 0.08), transparent 70%),
+    radial-gradient(700px 500px at 0% 80%, hsl(224 50% 30% / 0.12), transparent 70%);
+  background-attachment: fixed;
+}
+
+.rsip-table {
+  position: relative;
+  isolation: isolate;
+}
+
+/* 毛毡噪点纹理 */
+.rsip-table::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.35;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.05 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+/* 面板：带一条金色细线的深色面板 */
+.rsip-panel {
+  position: relative;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background:
+    linear-gradient(180deg, hsl(224 20% 13% / 0.92), hsl(224 22% 10% / 0.92));
+  box-shadow:
+    inset 0 1px 0 hsl(0 0% 100% / 0.04),
+    0 10px 30px -12px hsl(0 0% 0% / 0.6);
+}
+
+.rsip-panel-gilt::after {
+  content: '';
+  position: absolute;
+  inset: 0 16px auto;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, hsl(40 84% 58% / 0.55), transparent);
+}
+
+/* 区块标题：两侧装饰线 */
+.rsip-ornament {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.rsip-ornament::before,
+.rsip-ornament::after {
+  content: '';
+  height: 1px;
+  flex: 1;
+  background: linear-gradient(90deg, transparent, hsl(40 50% 60% / 0.35));
+}
+
+.rsip-ornament::after {
+  background: linear-gradient(90deg, hsl(40 50% 60% / 0.35), transparent);
+}
+
+/* ---------------- 稀有度 ---------------- */
+
+[data-rarity] {
+  --rar: hsl(224 10% 48%);
+  --rar-soft: hsl(224 10% 48% / 0.18);
+  --rar-glow: hsl(224 10% 48% / 0);
+}
+
+[data-rarity='common'] {
+  --rar: hsl(220 14% 74%);
+  --rar-soft: hsl(220 14% 74% / 0.16);
+}
+
+[data-rarity='uncommon'] {
+  --rar: hsl(158 48% 54%);
+  --rar-soft: hsl(158 48% 54% / 0.16);
+  --rar-glow: hsl(158 48% 54% / 0.18);
+}
+
+[data-rarity='rare'] {
+  --rar: hsl(210 80% 64%);
+  --rar-soft: hsl(210 80% 64% / 0.18);
+  --rar-glow: hsl(210 80% 64% / 0.24);
+}
+
+[data-rarity='epic'] {
+  --rar: hsl(272 62% 72%);
+  --rar-soft: hsl(272 62% 72% / 0.2);
+  --rar-glow: hsl(272 62% 72% / 0.3);
+}
+
+[data-rarity='legendary'] {
+  --rar: hsl(42 92% 62%);
+  --rar-soft: hsl(42 92% 62% / 0.22);
+  --rar-glow: hsl(42 92% 62% / 0.36);
+}
+
+.rsip-rar-text {
+  color: var(--rar);
+}
+
+/* ---------------- 卡牌 ---------------- */
+
+.rsip-card {
+  --rx: 0deg;
+  --ry: 0deg;
+  --mx: 50%;
+  --my: 50%;
+  --lift: 0px;
+  position: relative;
+  isolation: isolate;
+  border-radius: 14px;
+  border: 1.5px solid transparent;
+  background:
+    linear-gradient(180deg, hsl(224 22% 14%), hsl(224 24% 10%)) padding-box,
+    linear-gradient(155deg, var(--rar) 0%, hsl(224 14% 24%) 38%, hsl(224 14% 20%) 62%, var(--rar) 100%) border-box;
+  box-shadow:
+    0 0 0 1px hsl(0 0% 0% / 0.4),
+    0 14px 28px -14px hsl(0 0% 0% / 0.8),
+    0 0 26px -6px var(--rar-glow);
+  transform: perspective(900px) rotateX(var(--rx)) rotateY(var(--ry)) translateY(var(--lift));
+  transform-style: preserve-3d;
+  transition:
+    transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 260ms ease;
+}
+
+.rsip-card[data-interactive='true']:hover,
+.rsip-card[data-interactive='true']:focus-within {
+  --lift: -6px;
+  box-shadow:
+    0 0 0 1px hsl(0 0% 0% / 0.4),
+    0 26px 40px -18px hsl(0 0% 0% / 0.9),
+    0 0 34px -4px var(--rar-glow);
+}
+
+/* 卡面内框 */
+.rsip-card-inner {
+  position: absolute;
+  inset: 5px;
+  border-radius: 10px;
+  border: 1px solid hsl(0 0% 100% / 0.05);
+  pointer-events: none;
+}
+
+/* 鼠标高光（所有卡牌） */
+.rsip-card-glare {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 3;
+  background: radial-gradient(
+    circle at var(--mx) var(--my),
+    hsl(0 0% 100% / 0.14),
+    transparent 45%
+  );
+  transition: opacity 200ms ease;
+}
+
+.rsip-card:hover .rsip-card-glare {
+  opacity: 1;
+}
+
+/* 闪卡光泽：史诗 / 传说 */
+.rsip-card[data-rarity='epic'] .rsip-card-foil,
+.rsip-card[data-rarity='legendary'] .rsip-card-foil {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 2;
+  mix-blend-mode: color-dodge;
+  opacity: 0.18;
+  background:
+    linear-gradient(
+      115deg,
+      transparent 20%,
+      hsl(48 100% 70% / 0.55) 36%,
+      hsl(190 100% 70% / 0.45) 46%,
+      hsl(280 100% 75% / 0.45) 56%,
+      transparent 72%
+    );
+  background-size: 250% 250%;
+  background-position: var(--mx) var(--my);
+  animation: rsip-foil-drift 7s ease-in-out infinite alternate;
+  transition: opacity 260ms ease;
+}
+
+.rsip-card[data-rarity='epic']:hover .rsip-card-foil,
+.rsip-card[data-rarity='legendary']:hover .rsip-card-foil {
+  opacity: 0.42;
+  animation-play-state: paused;
+}
+
+@keyframes rsip-foil-drift {
+  from {
+    background-position: 0% 0%;
+  }
+  to {
+    background-position: 100% 100%;
+  }
+}
+
+/* 卡牌插画区 */
+.rsip-art {
+  --hue: 220;
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 90% at 30% 20%, hsl(var(--hue) 70% 62% / 0.85), transparent 60%),
+    radial-gradient(90% 90% at 80% 100%, hsl(calc(var(--hue) + 30) 60% 30% / 0.9), transparent 70%),
+    linear-gradient(160deg, hsl(var(--hue) 45% 30%), hsl(var(--hue) 40% 14%));
+}
+
+/* 插画区的放射线纹 */
+.rsip-art::before {
+  content: '';
+  position: absolute;
+  inset: -50%;
+  opacity: 0.16;
+  background: repeating-conic-gradient(
+    from 0deg at 50% 50%,
+    hsl(0 0% 100% / 0.6) 0deg 4deg,
+    transparent 4deg 18deg
+  );
+  mask-image: radial-gradient(circle at 50% 50%, black, transparent 55%);
+}
+
+.rsip-art::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 55%, hsl(224 24% 10% / 0.85));
+}
+
+/* 名称横幅 */
+.rsip-banner {
+  position: relative;
+  background: linear-gradient(90deg, transparent, var(--rar-soft) 20%, var(--rar-soft) 80%, transparent);
+  border-block: 1px solid hsl(0 0% 100% / 0.06);
+}
+
+/* 规则文本框（羊皮纸色调的内嵌区） */
+.rsip-textbox {
+  border-radius: 8px;
+  background: linear-gradient(180deg, hsl(36 18% 16% / 0.7), hsl(30 14% 12% / 0.7));
+  border: 1px solid hsl(38 30% 40% / 0.18);
+  box-shadow: inset 0 1px 6px hsl(0 0% 0% / 0.35);
+}
+
+/* 退役卡：去饱和 */
+.rsip-card[data-retired='true'] {
+  filter: grayscale(0.85) brightness(0.85);
+}
+
+.rsip-card[data-retired='true']:hover {
+  filter: grayscale(0.4) brightness(0.95);
+}
+
+/* ---------------- 宝石 ---------------- */
+
+.rsip-gem {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--gem-size, 34px);
+  height: var(--gem-size, 34px);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: hsl(0 0% 100%);
+  text-shadow: 0 1px 2px hsl(0 0% 0% / 0.7);
+  z-index: 4;
+}
+
+.rsip-gem::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  clip-path: polygon(50% 0%, 93% 25%, 93% 75%, 50% 100%, 7% 75%, 7% 25%);
+  background:
+    radial-gradient(circle at 35% 28%, hsl(0 0% 100% / 0.55), transparent 40%),
+    linear-gradient(160deg, var(--gem-a), var(--gem-b));
+  box-shadow: inset 0 0 0 2px hsl(0 0% 100% / 0.2);
+  filter: drop-shadow(0 2px 3px hsl(0 0% 0% / 0.6));
+}
+
+.rsip-gem::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  clip-path: polygon(50% 0%, 93% 25%, 93% 75%, 50% 100%, 7% 75%, 7% 25%);
+  transform: scale(1.14);
+  background: linear-gradient(160deg, hsl(40 60% 80%), hsl(34 50% 30%));
+}
+
+.rsip-gem[data-tone='streak'] {
+  --gem-a: hsl(38 95% 60%);
+  --gem-b: hsl(24 85% 38%);
+}
+
+.rsip-gem[data-tone='total'] {
+  --gem-a: hsl(212 70% 62%);
+  --gem-b: hsl(226 60% 30%);
+}
+
+.rsip-gem[data-tone='idle'] {
+  --gem-a: hsl(224 10% 46%);
+  --gem-b: hsl(224 14% 22%);
+}
+
+.rsip-gem[data-tone='empty'] {
+  --gem-a: hsl(224 14% 22%);
+  --gem-b: hsl(224 16% 14%);
+  color: hsl(224 10% 50%);
+}
+
+/* ---------------- 树（牌桌上的卡） ---------------- */
+
+.rsip-board {
+  position: relative;
+  border-radius: var(--radius-xl);
+  border: 1px solid hsl(224 15% 20%);
+  background:
+    radial-gradient(80% 60% at 50% 0%, hsl(40 60% 40% / 0.08), transparent 70%),
+    repeating-linear-gradient(0deg, hsl(0 0% 100% / 0.018) 0 1px, transparent 1px 28px),
+    repeating-linear-gradient(90deg, hsl(0 0% 100% / 0.018) 0 1px, transparent 1px 28px),
+    linear-gradient(180deg, hsl(224 26% 10%), hsl(224 26% 8%));
+  box-shadow: inset 0 2px 30px hsl(0 0% 0% / 0.5);
+}
+
+/* 子节点连线：经典 CSS 树画法 */
+.rsip-tree-children {
+  display: flex;
+  justify-content: center;
+  gap: 0;
+}
+
+.rsip-tree-child {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 22px 6px 0;
+}
+
+@media (min-width: 640px) {
+  .rsip-tree-child {
+    padding-inline: 12px;
+  }
+}
+
+.rsip-tree-child::before,
+.rsip-tree-child::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 50%;
+  width: 50%;
+  height: 22px;
+  border-top: 2px solid var(--line, hsl(224 14% 28%));
+}
+
+.rsip-tree-child::after {
+  right: auto;
+  left: 50%;
+  border-left: 2px solid var(--line, hsl(224 14% 28%));
+}
+
+.rsip-tree-child:only-child {
+  padding-top: 0;
+}
+
+.rsip-tree-child:only-child::before,
+.rsip-tree-child:only-child::after {
+  display: none;
+}
+
+.rsip-tree-child:first-child::before,
+.rsip-tree-child:last-child::after {
+  border: 0 none;
+}
+
+.rsip-tree-child:last-child::before {
+  border-right: 2px solid var(--line, hsl(224 14% 28%));
+  border-top-right-radius: 10px;
+}
+
+.rsip-tree-child:first-child::after {
+  border-top-left-radius: 10px;
+}
+
+.rsip-tree-stem {
+  width: 2px;
+  height: 22px;
+  background: var(--line, hsl(224 14% 28%));
+}
+
+.rsip-line-lit {
+  --line: hsl(40 84% 58% / 0.55);
+}
+
+/* 点亮光晕 */
+.rsip-lit {
+  animation: rsip-breathe 3.6s ease-in-out infinite;
+}
+
+@keyframes rsip-breathe {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px hsl(0 0% 0% / 0.4),
+      0 14px 28px -14px hsl(0 0% 0% / 0.8),
+      0 0 18px -4px hsl(40 90% 58% / 0.35);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px hsl(0 0% 0% / 0.4),
+      0 14px 28px -14px hsl(0 0% 0% / 0.8),
+      0 0 30px -2px hsl(40 90% 58% / 0.55);
+  }
+}
+
+/* 冰霜覆层 */
+.rsip-frost::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 40% at 0% 0%, hsl(200 90% 85% / 0.35), transparent 70%),
+    radial-gradient(50% 40% at 100% 100%, hsl(200 90% 85% / 0.28), transparent 70%),
+    linear-gradient(180deg, hsl(200 70% 70% / 0.12), hsl(210 60% 60% / 0.2));
+  box-shadow: inset 0 0 0 1px hsl(200 90% 80% / 0.45);
+}
+
+/* 待重判：虚线脉冲 */
+.rsip-pending {
+  outline: 1.5px dashed hsl(40 70% 70% / 0.7);
+  outline-offset: 4px;
+  animation: rsip-pending 2.4s ease-in-out infinite;
+}
+
+@keyframes rsip-pending {
+  50% {
+    outline-color: hsl(40 70% 70% / 0.2);
+  }
+}
+
+/* ---------------- 结算按钮（「结束回合」式） ---------------- */
+
+.rsip-endturn {
+  position: relative;
+  border-radius: 999px;
+  border: 1px solid hsl(40 70% 70% / 0.6);
+  color: hsl(30 60% 10%);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background:
+    radial-gradient(120% 140% at 50% 0%, hsl(46 100% 78%), hsl(38 90% 54%) 55%, hsl(30 80% 38%));
+  box-shadow:
+    inset 0 1px 0 hsl(0 0% 100% / 0.5),
+    inset 0 -2px 0 hsl(28 70% 28% / 0.6),
+    0 6px 18px -6px hsl(38 90% 50% / 0.7);
+  transition:
+    transform 160ms ease,
+    box-shadow 200ms ease,
+    filter 200ms ease;
+}
+
+.rsip-endturn:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+.rsip-endturn:active {
+  transform: translateY(1px);
+}
+
+.rsip-endturn[data-ready='true'] {
+  animation: rsip-endturn-pulse 2.2s ease-in-out infinite;
+}
+
+.rsip-endturn[data-done='true'] {
+  color: var(--foreground);
+  border-color: hsl(224 14% 30%);
+  background: linear-gradient(180deg, hsl(224 16% 22%), hsl(224 18% 15%));
+  box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.06);
+  animation: none;
+}
+
+@keyframes rsip-endturn-pulse {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 1px 0 hsl(0 0% 100% / 0.5),
+      inset 0 -2px 0 hsl(28 70% 28% / 0.6),
+      0 0 0 0 hsl(40 90% 58% / 0.5);
+  }
+  50% {
+    box-shadow:
+      inset 0 1px 0 hsl(0 0% 100% / 0.5),
+      inset 0 -2px 0 hsl(28 70% 28% / 0.6),
+      0 0 0 8px hsl(40 90% 58% / 0);
+  }
+}
+
+/* 切换器（牌桌 / 手牌） */
+.rsip-seg {
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: hsl(224 22% 9% / 0.8);
+  padding: 4px;
+}
+
+.rsip-seg-btn[aria-pressed='true'] {
+  color: hsl(30 60% 10%);
+  background: linear-gradient(180deg, hsl(44 90% 70%), hsl(38 86% 52%));
+  box-shadow:
+    inset 0 1px 0 hsl(0 0% 100% / 0.45),
+    0 4px 12px -4px hsl(40 90% 50% / 0.6);
+}
+
+/* ---------------- 揭示动画（里程碑喜报） ---------------- */
+
+.rsip-reveal {
+  animation: rsip-reveal 900ms cubic-bezier(0.2, 0.9, 0.25, 1.1) backwards;
+  animation-delay: var(--delay, 0ms);
+  transform-style: preserve-3d;
+}
+
+@keyframes rsip-reveal {
+  0% {
+    opacity: 0;
+    transform: perspective(900px) rotateY(180deg) scale(0.7) translateY(30px);
+  }
+  60% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    transform: perspective(900px) rotateY(0deg) scale(1) translateY(0);
+  }
+}
+
+.rsip-rays {
+  position: absolute;
+  inset: -40%;
+  z-index: -1;
+  pointer-events: none;
+  background: repeating-conic-gradient(
+    from 0deg,
+    hsl(42 95% 62% / 0.16) 0deg 8deg,
+    transparent 8deg 24deg
+  );
+  mask-image: radial-gradient(circle, black 10%, transparent 60%);
+  animation: rsip-spin 24s linear infinite;
+}
+
+@keyframes rsip-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 卡牌入场 */
+.rsip-deal {
+  animation: rsip-deal 520ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  animation-delay: var(--delay, 0ms);
+}
+
+@keyframes rsip-deal {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+} /* @layer components */
+
+/* ---------------- 弹窗统一外观（不分层） ---------------- */
+
+[data-slot='dialog-content'],
+[data-slot='alert-dialog-content'] {
+  background:
+    radial-gradient(120% 60% at 50% 0%, hsl(40 60% 50% / 0.06), transparent 60%),
+    linear-gradient(180deg, hsl(224 21% 12%), hsl(224 22% 9%));
+  border-color: hsl(224 15% 22%);
+  box-shadow:
+    inset 0 1px 0 hsl(40 84% 58% / 0.25),
+    0 30px 80px -20px hsl(0 0% 0% / 0.8);
+}
+
+[data-slot='dialog-overlay'],
+[data-slot='alert-dialog-overlay'] {
+  background: hsl(224 40% 3% / 0.7);
+  backdrop-filter: blur(3px);
+}
+
+[data-slot='dialog-title'],
+[data-slot='alert-dialog-title'] {
+  font-family: var(--font-serif);
+  letter-spacing: 0.02em;
+}
+
+/* 滚动条 */
+* {
+  scrollbar-color: hsl(224 14% 26%) transparent;
+  scrollbar-width: thin;
+}
+
+@layer components {
+@media (prefers-reduced-motion: reduce) {
+  .rsip-card,
+  .rsip-lit,
+  .rsip-pending,
+  .rsip-endturn,
+  .rsip-reveal,
+  .rsip-rays,
+  .rsip-deal,
+  .rsip-card-foil {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .rsip-card {
+    transform: none !important;
+  }
+}
+}
