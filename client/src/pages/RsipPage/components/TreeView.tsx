@@ -8,6 +8,8 @@ import {
 } from '@client/src/components/rsip/policy-icons';
 import ProgressTrack from '@client/src/components/rsip/ProgressTrack';
 import StatGem from '@client/src/components/rsip/StatGem';
+import LevelBadge from '@client/src/components/rsip/LevelBadge';
+import { getUpgradeState } from '@client/src/components/rsip/upgrade';
 import { getRarity } from '@client/src/components/rsip/rarity';
 import { useCardTilt } from '@client/src/hooks/useCardTilt';
 import { cn } from '@client/src/lib/utils';
@@ -37,6 +39,7 @@ const TreeNodeCard: React.FC<TreeNodeCardProps> = ({
   const icon = getIconOption(getPolicyIconKey(policy));
   const { Icon } = icon;
   const typeMeta = TYPE_META[policy.type];
+  const upgradeReady: boolean = getUpgradeState(policy, progress)?.ready ?? false;
 
   return (
     <div className="relative flex flex-col items-center">
@@ -92,6 +95,7 @@ const TreeNodeCard: React.FC<TreeNodeCardProps> = ({
           >
             {typeMeta.icon}
           </span>
+          <LevelBadge policy={policy} className="absolute top-9 right-2" />
 
           <div className="rsip-banner px-2 py-1.5 text-center">
             <p className="line-clamp-2 min-h-[2.5em] font-serif text-[13px] leading-tight font-bold text-foreground sm:text-sm">
@@ -109,7 +113,7 @@ const TreeNodeCard: React.FC<TreeNodeCardProps> = ({
               </span>
             </div>
             <ProgressTrack cumulative={cumulative} streak={streak} compact />
-            {(frozenBy || pendingRelease || policy.isRetired) && (
+            {(frozenBy || pendingRelease || policy.isRetired || upgradeReady) && (
               <div className="flex flex-wrap gap-1 pt-0.5">
                 {frozenBy && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-sky-300/15 px-1.5 py-0.5 text-[10px] text-sky-200">
@@ -120,6 +124,11 @@ const TreeNodeCard: React.FC<TreeNodeCardProps> = ({
                 {pendingRelease && (
                   <span className="rounded-full bg-gold/15 px-1.5 py-0.5 text-[10px] text-gold-soft">
                     待解冻重判
+                  </span>
+                )}
+                {upgradeReady && (
+                  <span className="rounded-full border border-gold/40 px-1.5 py-0.5 text-[10px] text-gold-soft">
+                    可升级
                   </span>
                 )}
                 {policy.isRetired && (

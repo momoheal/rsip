@@ -33,7 +33,10 @@ const RollbackList: React.FC<RollbackListProps> = ({ rollbacks }) => {
                   variant="outline"
                   className="px-1.5 text-[11px] font-normal text-muted-foreground tabular-nums"
                 >
-                  连带熄灭 {event.sweptCount}
+                  {/* sweptCount 含触发节点自身 */}
+                  {event.sweptCount > 1
+                    ? `连带 ${event.sweptCount - 1} 条`
+                    : '仅自身'}
                 </Badge>
               </div>
               <p className="mt-1.5 break-words text-sm font-medium text-foreground">

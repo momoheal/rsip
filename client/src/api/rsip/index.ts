@@ -16,6 +16,8 @@ import type {
   RsipPolicyInput,
   RsipReviewResult,
   RsipReviewSubmitInput,
+  RsipRollbackEvent,
+  RsipRollbackNoteInput,
   RsipSettingsInput,
   RsipTreeCreateInput,
   RsipTreeUpdateInput,
@@ -71,10 +73,29 @@ export async function updatePolicy(
   return res.data;
 }
 
+/** v1.2 强化等级 +1（手动确认）；平台后端暂未实现，仅本地模式可用 */
+export async function upgradePolicy(id: string): Promise<RsipPolicy> {
+  if (USE_LOCAL) return localEngine.upgradePolicy(id);
+  throw new Error('平台模式暂不支持强化等级，请使用本地模式');
+}
+
 export async function attachNode(input: RsipAttachInput): Promise<RsipOverview> {
   if (USE_LOCAL) return localEngine.attachNode(input);
   const res = await axiosForBackend.post<RsipOverview>(
     '/api/rsip/tree/attach',
+    input,
+  );
+  return res.data;
+}
+
+/** v1.2 崩塌复盘：补写触发场景与教训 */
+export async function updateRollbackNote(
+  id: string,
+  input: RsipRollbackNoteInput,
+): Promise<RsipRollbackEvent> {
+  if (USE_LOCAL) return localEngine.updateRollbackNote(id, input);
+  const res = await axiosForBackend.patch<RsipRollbackEvent>(
+    `/api/rsip/rollbacks/${id}`,
     input,
   );
   return res.data;

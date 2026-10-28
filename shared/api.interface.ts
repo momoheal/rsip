@@ -24,8 +24,11 @@ export type RsipLeverageSource =
 /** v1.1 国策树层级：精锐 / 普通 */
 export type RsipTreeTier = 'elite' | 'normal';
 
-/** 结算判定：成立 / 违反 / 永久合法化 */
-export type RsipVerdict = 'satisfied' | 'violated' | 'legalized';
+/**
+ * 结算判定：成立 / 违反 / 永久合法化 / 降回 +0
+ * downgraded（v1.2）：强化等级 > 0 的国策答「否」时可选，等级归零、节点留树、不级联（仅本地模式）
+ */
+export type RsipVerdict = 'satisfied' | 'violated' | 'legalized' | 'downgraded';
 
 export interface RsipPolicy {
   id: string;
@@ -44,6 +47,16 @@ export interface RsipPolicy {
   leverage: RsipLeverageSource | null;
   /** v1.1 是否作用于有效干预节点（相关/不相关），null 表示未判定 */
   relevant: boolean | null;
+  /** v1.2 是否可强化（+N）；平台后端暂未提供时缺省 = 否 */
+  upgradable?: boolean;
+  /** v1.2 当前强化等级，0 = 基础门槛 */
+  level?: number;
+  /** v1.2 每升一级的门槛平移，例如「起床时间提前 15 分钟」 */
+  stepText?: string | null;
+  /** v1.2 本级连续点亮多少天可升级 */
+  upgradeAfterStreak?: number | null;
+  /** v1.2 上次升级时的 currentStreak，本级天数 = currentStreak − 该值 */
+  levelStreakBase?: number;
   isRetired: boolean;
   retireReason: string | null;
   createdAt: string;
@@ -213,6 +226,18 @@ export interface RsipOverview {
   diagnoses: RsipDiagnosis[];
   /** v1.1 首次使用日期（用于新手保护期判定），未引导为 null */
   firstUseDate: string | null;
+  /** v1.2「赢麻了」每日命名（最近 14 天，新在前）；平台后端暂未提供时缺省 */
+  namedDays?: RsipNamedDay[];
+}
+
+/** v1.2「赢麻了」当天定级 */
+export type RsipDayLevel = 'small' | 'medium' | 'big';
+
+/** v1.2 用当天最大的喜报给这一天命名 */
+export interface RsipNamedDay {
+  date: string;
+  title: string;
+  level: RsipDayLevel;
 }
 
 /* ---------- 请求 ---------- */
@@ -229,6 +254,10 @@ export interface RsipPolicyInput {
   leverage?: RsipLeverageSource | null;
   /** v1.1 相关性 */
   relevant?: boolean | null;
+  /** v1.2 强化规则：关闭时等级归零 */
+  upgradable?: boolean;
+  stepText?: string | null;
+  upgradeAfterStreak?: number | null;
 }
 
 export interface RsipOnboardingInput {
@@ -265,6 +294,15 @@ export interface RsipReviewSubmitInput {
   /** 结算窗口外手动进入时前端标记 */
   late: boolean;
   notes?: string | null;
+  /** v1.2「赢麻了」：用当天最大的喜报命名（可空） */
+  dayTitle?: string | null;
+  dayLevel?: RsipDayLevel | null;
+}
+
+/** v1.2 崩塌复盘：把崩塌当调试器，记录触发场景与教训 */
+export interface RsipRollbackNoteInput {
+  reasonScenario: string | null;
+  lesson: string | null;
 }
 
 export interface RsipFreezeInput {
@@ -322,6 +360,8 @@ export interface RsipReviewResult {
   hadRollback: boolean;
   rolledBackPolicies: string[];
   retiredPolicies: string[];
+  /** v1.2 本次「降回 +0」的国策（节点留树） */
+  downgradedPolicies?: string[];
   /** 结算后是否开放新增入口 */
   canAttachToday: boolean;
   /** 本次结算触发的里程碑喜报 */

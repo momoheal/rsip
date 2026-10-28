@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type {
+  RsipDayLevel,
   RsipOverview,
   RsipPolicyType,
   RsipReviewResult,
@@ -16,6 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@client/src/components/ui/dialog';
+import { Input } from '@client/src/components/ui/input';
 import { Label } from '@client/src/components/ui/label';
 import {
   RadioGroup,
@@ -43,7 +45,46 @@ interface DueNode {
   depth: number;
   treeId: string;
   treeName: string;
+  /** 真违反时会一起退回手牌的子孙节点数 */
+  descendantCount: number;
+  /** 自身 + 子孙当前连续点亮天数之和（真违反时清零；累计进度保留） */
+  streakAtStake: number;
 }
+
+/** 子树规模：子孙节点数 + 自身与子孙的连续点亮天数之和 */
+function measureSubtree(node: RsipTreeNode): {
+  descendants: number;
+  streak: number;
+} {
+  let descendants = 0;
+  let streak: number = node.progress?.currentStreak ?? 0;
+  node.children.forEach((child: RsipTreeNode) => {
+    const sub = measureSubtree(child);
+    descendants += 1 + sub.descendants;
+    streak += sub.streak;
+  });
+  return { descendants, streak };
+}
+
+/** 收集总览里出现过的国策名称，用于把结算结果里的 policyId 显示成名字 */
+function collectPolicyNames(overview: RsipOverview): Map<string, string> {
+  const names = new Map<string, string>();
+  const walk = (node: RsipTreeNode | null): void => {
+    if (!node) return;
+    names.set(node.policy.id, node.policy.name);
+    node.children.forEach(walk);
+  };
+  overview.trees.forEach((tree: RsipTree) => walk(tree.root));
+  overview.hand.forEach((item) => names.set(item.policy.id, item.policy.name));
+  overview.precedents.forEach((policy) => names.set(policy.id, policy.name));
+  return names;
+}
+
+const DAY_LEVELS: { value: RsipDayLevel; label: string }[] = [
+  { value: 'small', label: '小赢' },
+  { value: 'medium', label: '中赢' },
+  { value: 'big', label: '大赢' },
+];
 
 interface DueGroup {
   treeId: string;
@@ -58,6 +99,8 @@ interface DailyReviewDialogProps {
   onClose: () => void;
   /** 结算完成后回传结果（含本次触发的里程碑喜报） */
   onDone: (result: RsipReviewResult) => void;
+  /** 有回滚时，从结果页直接进入崩塌复盘 */
+  onOpenRollbackLog?: () => void;
 }
 
 /** 递归收集单棵树上今日应结算的节点：排除已退役与命中冻结的节点 */
@@ -70,7 +113,10 @@ function collectDueNodes(
 ): void {
   if (!node) return;
   if (!node.policy.isRetired && !node.frozenBy) {
+    const stake = measureSubtree(node);
     acc.push({
+      descendantCount: stake.descendants,
+      streakAtStake: stake.streak,
       nodeId: node.nodeId,
       name: node.policy.name,
       judge: node.policy.judge,
@@ -93,6 +139,7 @@ const DailyReviewDialog: React.FC<DailyReviewDialogProps> = ({
   overview,
   onClose,
   onDone,
+  onOpenRollbackLog,
 }) => {
   const today = overview.today;
   const settings = overview.settings;
@@ -102,6 +149,26 @@ const DailyReviewDialog: React.FC<DailyReviewDialogProps> = ({
   const [result, setResult] = useState<RsipReviewResult | null>(null);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [errorText, setErrorText] = useState<string | null>(null);
+  const [dayTitle, setDayTitle] = useState<string>('');
+  const [dayLevel, setDayLevel] = useState<RsipDayLevel>('small');
+
+  // 结算提交前的快照：结果页要把 policyId 显示成名字，提交后国策可能已不在树上
+  const policyNames = useMemo<Map<string, string>>(
+    () => collectPolicyNames(overview),
+    [overview],
+  );
+  const nameOf = (policyId: string): string =>
+    policyNames.get(policyId) ?? '未知国策';
+
+  /** 今天发布的喜报标题，作为命名的快捷候选 */
+  const todayWinTitles = useMemo<string[]>(
+    () =>
+      overview.winReports
+        .filter((report) => report.createdAt.slice(0, 10) === today.date)
+        .map((report) => report.title)
+        .slice(0, 4),
+    [overview.winReports, today.date],
+  );
 
   const dueNodes = useMemo<DueNode[]>(() => {
     const acc: DueNode[] = [];
@@ -136,6 +203,8 @@ const DailyReviewDialog: React.FC<DailyReviewDialogProps> = ({
     setResult(null);
     setErrorText(null);
     setSubmitting(false);
+    setDayTitle('');
+    setDayLevel('small');
   }, [open, today.date]);
 
   const noNodes: DueNode[] = dueNodes.filter(
@@ -207,6 +276,8 @@ const DailyReviewDialog: React.FC<DailyReviewDialogProps> = ({
       const data: RsipReviewResult = await submitReview({
         verdicts,
         late: !today.windowOpen,
+        dayTitle: dayTitle.trim() ? dayTitle.trim() : null,
+        dayLevel: dayTitle.trim() ? dayLevel : null,
       });
       setResult(data);
     } catch (error) {
@@ -236,13 +307,29 @@ const DailyReviewDialog: React.FC<DailyReviewDialogProps> = ({
           <div className="rounded-lg border border-border p-4">
             <p className="text-sm text-foreground">有国策退回手牌</p>
             <ul className="mt-2 space-y-1 text-xs leading-relaxed text-muted-foreground">
-              {result.rolledBackPolicies.map((name: string) => (
-                <li key={name}>· {name}</li>
+              {result.rolledBackPolicies.map((policyId: string) => (
+                <li key={policyId}>· {nameOf(policyId)}</li>
               ))}
             </ul>
             <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
               回滚是路径搜索的一部分。内化进度保留，重挂到树上即可继续累积。
+              崩塌也是调试器：记下触发场景，下一轮就知道该拆小、补前置，还是先绕过去。
             </p>
+            {onOpenRollbackLog && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="mt-3"
+                onClick={() => {
+                  onDone(result);
+                  onClose();
+                  onOpenRollbackLog();
+                }}
+              >
+                去复盘这次崩塌
+              </Button>
+            )}
             <MedicalDisclaimer className="mt-3" />
           </div>
         ) : (
@@ -255,8 +342,8 @@ const DailyReviewDialog: React.FC<DailyReviewDialogProps> = ({
           <div className="rounded-lg border border-border p-4">
             <p className="text-sm text-foreground">已永久合法化</p>
             <ul className="mt-2 space-y-1 text-xs leading-relaxed text-muted-foreground">
-              {result.retiredPolicies.map((name: string) => (
-                <li key={name}>· {name}（退役并收进判例库）</li>
+              {result.retiredPolicies.map((policyId: string) => (
+                <li key={policyId}>· {nameOf(policyId)}（退役并收进判例库）</li>
               ))}
             </ul>
           </div>
@@ -376,6 +463,14 @@ const DailyReviewDialog: React.FC<DailyReviewDialogProps> = ({
                         真违反了（这条国策与它的子国策退回手牌，内化进度保留）
                       </Label>
                     </div>
+                    {ruling === 'violated' && (
+                      <p className="ml-6 rounded-md border border-border bg-background/40 px-2.5 py-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                        {node.descendantCount > 0
+                          ? `会连带 ${node.descendantCount} 条子国策一起退回手牌；`
+                          : '只有这一条退回手牌；'}
+                        合计 {node.streakAtStake} 天连续点亮清零，累计天数保留。
+                      </p>
+                    )}
                     <div className="flex items-start gap-2">
                       <RadioGroupItem
                         value="legalized"
@@ -398,6 +493,63 @@ const DailyReviewDialog: React.FC<DailyReviewDialogProps> = ({
           </div>
         ))}
       </div>
+
+      <section
+        aria-label="今日命名"
+        className="space-y-2.5 rounded-lg border border-gold/25 bg-gold/5 p-4"
+      >
+        <div>
+          <p className="font-serif text-sm font-bold text-gold-soft">
+            赢麻了 · 给今天命名（可选）
+          </p>
+          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+            用今天最大的一件好事命名，再定个级。之后可以在喜报里翻看。
+          </p>
+        </div>
+        <Input
+          value={dayTitle}
+          maxLength={40}
+          onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+            setDayTitle(event.target.value)
+          }
+          placeholder="例如：搞定高数第三章胜利日"
+          aria-label="今日命名"
+        />
+        {todayWinTitles.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {todayWinTitles.map((title: string) => (
+              <button
+                key={title}
+                type="button"
+                onClick={() => setDayTitle(`${title}日`)}
+                className="rounded-full border border-border px-2.5 py-0.5 text-[11px] text-foreground/75 transition-colors hover:border-gold/50 hover:text-gold-soft"
+              >
+                {title}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="flex gap-1.5" role="radiogroup" aria-label="今日定级">
+          {DAY_LEVELS.map((level) => (
+            <button
+              key={level.value}
+              type="button"
+              role="radio"
+              aria-checked={dayLevel === level.value}
+              disabled={!dayTitle.trim()}
+              onClick={() => setDayLevel(level.value)}
+              className={cn(
+                'rounded-full border px-3 py-1 text-xs transition-colors disabled:opacity-40',
+                dayLevel === level.value
+                  ? 'border-gold/60 bg-gold/15 text-gold-soft'
+                  : 'border-border text-foreground/70 hover:border-foreground/30',
+              )}
+            >
+              {level.label}
+            </button>
+          ))}
+        </div>
+      </section>
 
       {errorText && (
         <p className="text-xs leading-relaxed text-foreground/70">{errorText}</p>

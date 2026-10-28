@@ -78,11 +78,20 @@ interface HandViewProps {
   groups?: RsipPolicyGroup[];
   /** 打开国策组管理 */
   onManageGroups?: () => void;
+  /** 每条国策累计崩塌次数（≥2 次在卡上标注，提示先绕过去） */
+  collapseCountByPolicy?: Map<string, number>;
 }
 
 const HandView: React.FC<HandViewProps> = (props) => {
-  const { hand, precedents, onEditPolicy, onAttach, groups, onManageGroups } =
-    props;
+  const {
+    hand,
+    precedents,
+    onEditPolicy,
+    onAttach,
+    groups,
+    onManageGroups,
+    collapseCountByPolicy,
+  } = props;
   const [filter, setFilter] = useState<string>(FILTER_ALL);
 
   const groupList: RsipPolicyGroup[] = useMemo<RsipPolicyGroup[]>(
@@ -117,6 +126,15 @@ const HandView: React.FC<HandViewProps> = (props) => {
 
   const groupNameOf = (policy: RsipPolicy): string | null =>
     policy.groupId ? (groupNameById.get(policy.groupId) ?? null) : null;
+
+  /** 卡片标记：曾上树 / 反复崩塌 */
+  const tagOf = (item: RsipHandItem): string | null => {
+    const collapses: number = collapseCountByPolicy?.get(item.policy.id) ?? 0;
+    const parts: string[] = [];
+    if (item.everLit) parts.push('曾上树');
+    if (collapses >= 2) parts.push(`崩塌 ${collapses} 次`);
+    return parts.length > 0 ? parts.join(' · ') : null;
+  };
 
   return (
     <div className="@container flex flex-col gap-6">
@@ -181,7 +199,7 @@ const HandView: React.FC<HandViewProps> = (props) => {
                 policy={item.policy}
                 progress={item.progress}
                 groupName={groupNameOf(item.policy)}
-                tag={item.everLit ? '曾上树' : null}
+                tag={tagOf(item)}
                 dealDelay={Math.min(index, 8) * 60}
                 actions={
                   <>

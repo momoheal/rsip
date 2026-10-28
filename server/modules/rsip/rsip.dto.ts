@@ -19,6 +19,7 @@ import type {
   RsipPolicyGroupAssignInput,
   RsipPolicyInput,
   RsipReviewSubmitInput,
+  RsipRollbackNoteInput,
   RsipSettingsInput,
   RsipTreeCreateInput,
   RsipTreeUpdateInput,
@@ -191,6 +192,19 @@ export class RsipTreeUpdateDto implements RsipTreeUpdateInput {
   @IsString()
   @MaxLength(200)
   goal?: string | null;
+}
+
+/** v1.2 崩塌复盘：触发场景 + 教训（显式 null 表示清空） */
+export class RsipRollbackNoteDto implements RsipRollbackNoteInput {
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  reasonScenario!: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  lesson!: string | null;
 }
 
 /** 国策组：跨树分类标签，不影响任何判定逻辑 */

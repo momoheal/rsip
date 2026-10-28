@@ -19,6 +19,7 @@ import {
   RsipPolicyDto,
   RsipPolicyGroupAssignDto,
   RsipReviewSubmitDto,
+  RsipRollbackNoteDto,
   RsipSettingsDto,
   RsipTreeCreateDto,
   RsipTreeUpdateDto,
@@ -90,6 +91,14 @@ export class RsipController {
   @Delete('groups/:id')
   async deleteGroup(@Param('id') id: string): Promise<void> {
     await this.rsipService.deleteGroup(id);
+  }
+
+  @Patch('rollbacks/:id')
+  async updateRollbackNote(
+    @Param('id') id: string,
+    @Body() dto: RsipRollbackNoteDto,
+  ) {
+    return this.rsipService.updateRollbackNote(id, dto);
   }
 
   @Post('win-reports')

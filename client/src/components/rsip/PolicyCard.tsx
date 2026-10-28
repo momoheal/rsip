@@ -6,6 +6,7 @@ import { useCardTilt } from '@client/src/hooks/useCardTilt';
 import { getIconOption, getPolicyIconKey } from './policy-icons';
 import { TYPE_META } from './PolicyTypeBadge';
 import { getRarity } from './rarity';
+import LevelBadge from './LevelBadge';
 import ProgressTrack from './ProgressTrack';
 import StatGem from './StatGem';
 
@@ -90,6 +91,7 @@ const PolicyCard: React.FC<PolicyCardProps> = ({
           >
             {typeMeta.icon}
           </span>
+          {!retired && <LevelBadge policy={policy} />}
         </div>
         <span className="rsip-rar-text absolute bottom-1.5 left-1/2 z-[4] -translate-x-1/2 text-[10px] font-semibold tracking-[0.3em]">
           {rarity.label}

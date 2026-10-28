@@ -12,6 +12,9 @@ import type {
   RsipFreezeReleaseInput,
   RsipFreezeReleaseResult,
   RsipGroupInput,
+  RsipNamedDay,
+  RsipRollbackEvent,
+  RsipRollbackNoteInput,
   RsipHandItem,
   RsipAttachInput,
   RsipOnboardingInput,
@@ -84,6 +87,9 @@ interface ReviewRecord {
   verdicts: { nodeId: string; policyId: string; verdict: RsipVerdict }[];
   late: boolean;
   notes: string | null;
+  /** v1.2「赢麻了」每日命名 */
+  dayTitle?: string | null;
+  dayLevel?: RsipNamedDay['level'] | null;
 }
 
 interface LocalState {
@@ -316,7 +322,16 @@ function buildOverview(state: LocalState): RsipOverview {
     rollbacks: [...state.rollbacks].sort((a, b) => b.occurredOn.localeCompare(a.occurredOn)),
     diagnoses: state.diagnoses,
     firstUseDate: state.firstUseDate,
+    namedDays: buildNamedDays(state),
   };
+}
+
+function buildNamedDays(state: LocalState): RsipNamedDay[] {
+  return Object.values(state.reviews)
+    .filter((r) => r.dayTitle && r.dayLevel)
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, 14)
+    .map((r) => ({ date: r.date, title: r.dayTitle!, level: r.dayLevel! }));
 }
 
 function decorateFreeze(state: LocalState, f: RsipFreezeRecord, date: string): RsipFreezeRecord {
@@ -338,12 +353,28 @@ function buildPolicy(input: RsipPolicyInput, existing?: RsipPolicy): RsipPolicy 
       groupId: null,
       leverage: null,
       relevant: null,
+      upgradable: false,
+      level: 0,
+      stepText: null,
+      upgradeAfterStreak: null,
+      levelStreakBase: 0,
       isRetired: false,
       retireReason: null,
       createdAt: new Date().toISOString(),
     };
+  // v1.2 强化规则：关闭时等级与本级计数一并归零
+  const upgradable = input.upgradable ?? existing?.upgradable ?? false;
+  const stepText =
+    input.stepText !== undefined ? input.stepText?.trim() || null : existing?.stepText ?? null;
   return {
     ...base,
+    upgradable,
+    stepText: upgradable ? stepText : null,
+    upgradeAfterStreak: upgradable
+      ? input.upgradeAfterStreak ?? existing?.upgradeAfterStreak ?? 7
+      : null,
+    level: upgradable ? existing?.level ?? 0 : 0,
+    levelStreakBase: upgradable ? existing?.levelStreakBase ?? 0 : 0,
     name: input.name,
     type: input.type,
     trigger: input.type === 'semi_passive' ? input.trigger ?? null : null,
@@ -391,9 +422,13 @@ function rollbackFrom(
     n.extinguishedOn = date;
     const prog = state.progress[n.policyId];
     if (prog) prog.currentStreak = 0;
+    const p = state.policies.find((x) => x.id === n.policyId);
+    if (p) p.levelStreakBase = 0;
   }
   const triggerNode = state.nodes.find((n) => n.nodeId === triggerNodeId)!;
   const triggerPolicy = state.policies.find((p) => p.id === triggerNode.policyId)!;
+  // 在强化等级上真违反：触发国策等级归零，子国策保留各自等级
+  triggerPolicy.level = 0;
   state.rollbacks.push({
     id: uid('rb'),
     occurredOn: date,
@@ -616,6 +651,7 @@ export const localEngine = {
     const newWins: RsipWinReport[] = [];
     const rolledBackPolicies: string[] = [];
     const retiredPolicies: string[] = [];
+    const downgradedPolicies: string[] = [];
     let hadRollback = false;
 
     // 先处理 legalized（退役，不级联）
@@ -629,6 +665,22 @@ export const localEngine = {
       node.active = false;
       node.extinguishedOn = date;
       retiredPolicies.push(policy.id);
+    }
+
+    // 处理 downgraded（v1.2 降回 +0：等级归零、节点留树、不级联、连续天数清零）
+    for (const v of input.verdicts) {
+      if (v.verdict !== 'downgraded') continue;
+      const node = state.nodes.find((n) => n.nodeId === v.nodeId && n.active);
+      if (!node) continue;
+      const policy = state.policies.find((p) => p.id === node.policyId)!;
+      if (!policy.upgradable || (policy.level ?? 0) === 0) {
+        throw new Error(`「${policy.name}」没有强化等级，不能降回 +0`);
+      }
+      policy.level = 0;
+      policy.levelStreakBase = 0;
+      const prog = state.progress[policy.id];
+      if (prog) prog.currentStreak = 0;
+      downgradedPolicies.push(policy.id);
     }
 
     // 处理 violated（递归回滚）
@@ -718,6 +770,8 @@ export const localEngine = {
       })),
       late: input.late,
       notes: input.notes ?? null,
+      dayTitle: input.dayTitle?.trim() ? input.dayTitle.trim().slice(0, 40) : null,
+      dayLevel: input.dayTitle?.trim() ? (input.dayLevel ?? 'small') : null,
     };
 
     saveState(state);
@@ -727,6 +781,7 @@ export const localEngine = {
       hadRollback,
       rolledBackPolicies: [...new Set(rolledBackPolicies)],
       retiredPolicies: [...new Set(retiredPolicies)],
+      downgradedPolicies: [...new Set(downgradedPolicies)],
       canAttachToday: after.canAttachToday,
       newWinReports: newWins,
     };
@@ -1024,6 +1079,40 @@ export const localEngine = {
         .slice(0, 10),
       firstUseDate: state.firstUseDate,
     };
+  },
+
+  /** v1.2 强化：本级连续点亮达到门槛后由用户手动确认，等级 +1 */
+  upgradePolicy(policyId: string): RsipPolicy {
+    const state = loadState();
+    const policy = state.policies.find((p) => p.id === policyId);
+    if (!policy) throw new Error('国策不存在');
+    if (!policy.upgradable || !policy.upgradeAfterStreak) {
+      throw new Error('这条国策没有设置强化规则');
+    }
+    if (!state.nodes.some((n) => n.policyId === policyId && n.active)) {
+      throw new Error('国策在树上时才能升级');
+    }
+    const streak = state.progress[policyId]?.currentStreak ?? 0;
+    const daysAtLevel = streak - (policy.levelStreakBase ?? 0);
+    if (daysAtLevel < policy.upgradeAfterStreak) {
+      throw new Error(`本级还需连续点亮 ${policy.upgradeAfterStreak - daysAtLevel} 天`);
+    }
+    policy.level = (policy.level ?? 0) + 1;
+    policy.levelStreakBase = streak;
+    saveState(state);
+    return policy;
+  },
+
+  updateRollbackNote(id: string, input: RsipRollbackNoteInput): RsipRollbackEvent {
+    const state = loadState();
+    const event = state.rollbacks.find((r) => r.id === id);
+    if (!event) throw new Error('崩塌记录不存在');
+    event.reasonScenario = input.reasonScenario?.trim()
+      ? input.reasonScenario.trim().slice(0, 200)
+      : null;
+    event.lesson = input.lesson?.trim() ? input.lesson.trim().slice(0, 500) : null;
+    saveState(state);
+    return event;
   },
 
   /** 重置本地数据（调试用） */

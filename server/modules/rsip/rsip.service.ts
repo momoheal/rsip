@@ -49,6 +49,7 @@ import type {
   RsipOnboardingDto,
   RsipPolicyDto,
   RsipPolicyGroupAssignDto,
+  RsipRollbackNoteDto,
   RsipSettingsDto,
   RsipTreeCreateDto,
   RsipTreeUpdateDto,
@@ -1035,6 +1036,32 @@ export class RsipService {
     const row = updated[0];
     if (row === undefined) throw new NotFoundException('国策不存在');
     return toPolicy(row);
+  }
+
+  /** v1.2 崩塌复盘：补写触发场景与教训（不改变任何判定） */
+  async updateRollbackNote(
+    id: string,
+    dto: RsipRollbackNoteDto,
+  ): Promise<RsipRollbackEvent> {
+    const reasonScenario: string | null = dto.reasonScenario?.trim()
+      ? dto.reasonScenario.trim()
+      : null;
+    const lesson: string | null = dto.lesson?.trim() ? dto.lesson.trim() : null;
+    const updated: RollbackRow[] = await this.db
+      .update(rsipRollbackEvents)
+      .set({ reasonScenario, lesson, updatedAt: new Date() })
+      .where(eq(rsipRollbackEvents.id, id))
+      .returning();
+    const row: RollbackRow | undefined = updated[0];
+    if (row === undefined) throw new NotFoundException('崩塌记录不存在');
+    const policyRows: PolicyRow[] = await this.db
+      .select()
+      .from(rsipPolicies)
+      .where(eq(rsipPolicies.id, row.triggerPolicyId));
+    const policyById = new Map<string, PolicyRow>(
+      policyRows.map((p: PolicyRow) => [p.id, p]),
+    );
+    return toRollbackEvent(row, policyById);
   }
 
   async createWinReport(dto: RsipWinReportDto): Promise<RsipWinReport> {

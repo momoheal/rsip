@@ -29,6 +29,7 @@ import {
   FormMessage,
 } from '@client/src/components/ui/form';
 import { Input } from '@client/src/components/ui/input';
+import { Switch } from '@client/src/components/ui/switch';
 import { PolicyIcon } from '@client/src/components/rsip/PolicyIcon';
 import PolicyIconPicker from './PolicyIconPicker';
 import {
@@ -92,8 +93,36 @@ const policySchema = z
     ]),
     /** v1.1 相关性：是否作用于有效干预节点 */
     relevant: z.enum(['true', 'false']),
+    /** v1.2 强化规则 */
+    upgradable: z.boolean(),
+    stepText: z.string(),
+    upgradeAfterStreak: z.string(),
   })
   .superRefine((value, ctx) => {
+    if (value.upgradable) {
+      const step: string = value.stepText.trim();
+      if (step.length === 0) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['stepText'],
+          message: '请写明每升一级门槛怎么平移',
+        });
+      } else if (step.length > 40) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['stepText'],
+          message: '平移说明不超过 40 字',
+        });
+      }
+      const days: number = Number(value.upgradeAfterStreak);
+      if (!Number.isInteger(days) || days < 1 || days > 365) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['upgradeAfterStreak'],
+          message: '升级门槛为 1–365 之间的整数天',
+        });
+      }
+    }
     if (value.type !== 'semi_passive') return;
     if (value.trigger.trim().length === 0) {
       ctx.addIssue({
@@ -125,6 +154,9 @@ function toFormValues(initial: RsipPolicy | null): PolicyFormData {
     groupId: initial?.groupId ?? GROUP_NONE,
     leverage: initial?.leverage ?? 'causal_chain',
     relevant: initial?.relevant === false ? 'false' : 'true',
+    upgradable: initial?.upgradable ?? false,
+    stepText: initial?.stepText ?? '',
+    upgradeAfterStreak: String(initial?.upgradeAfterStreak ?? 7),
   };
 }
 
@@ -148,6 +180,8 @@ const PolicyEditorDialog: React.FC<PolicyEditorDialogProps> = ({
   });
 
   const policyType: RsipUserPolicyType = form.watch('type');
+  const upgradable: boolean = form.watch('upgradable');
+  const currentLevel: number = initial?.upgradable ? (initial.level ?? 0) : 0;
 
   useEffect(() => {
     if (open && !prevOpenRef.current) {
@@ -168,6 +202,9 @@ const PolicyEditorDialog: React.FC<PolicyEditorDialogProps> = ({
       iconKey,
       leverage: data.leverage,
       relevant: data.relevant === 'true',
+      upgradable: data.upgradable,
+      stepText: data.upgradable ? data.stepText.trim() : null,
+      upgradeAfterStreak: data.upgradable ? Number(data.upgradeAfterStreak) : null,
     };
     setSubmitting(true);
     try {
@@ -402,6 +439,88 @@ const PolicyEditorDialog: React.FC<PolicyEditorDialogProps> = ({
                 </FormItem>
               )}
             />
+
+            <section
+              aria-label="强化规则"
+              className="space-y-3 rounded-lg border border-border bg-muted/30 p-3"
+            >
+              <FormField
+                control={form.control}
+                name="upgradable"
+                render={({ field }) => (
+                  <FormItem className="flex items-start justify-between gap-3 space-y-0">
+                    <div className="space-y-0.5">
+                      <FormLabel>强化规则（可选）</FormLabel>
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        适合有时间门槛的国策：本级连续点亮够天数后可手动升一级，门槛平移一档。
+                        之后某天没做到，可以只降回 +0，节点和子国策都留在树上。
+                      </p>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={(checked: boolean) => field.onChange(checked)}
+                        aria-label="启用强化规则"
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              {upgradable && (
+                <div className="grid gap-3 sm:grid-cols-[1fr_8rem]">
+                  <FormField
+                    control={form.control}
+                    name="stepText"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          每升一级{' '}
+                          <span aria-hidden="true" className="text-destructive">
+                            *
+                          </span>
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="例如：起床时间提前 15 分钟"
+                            maxLength={40}
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="upgradeAfterStreak"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>升级门槛（天）</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            inputMode="numeric"
+                            min={1}
+                            max={365}
+                            className="tabular-nums"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <p className="text-xs leading-relaxed text-muted-foreground sm:col-span-2">
+                    判定标准写基础门槛（+0）；第 N 级的实际门槛 = 基础门槛平移 N 档。
+                    {currentLevel > 0 && (
+                      <span className="tabular-nums">
+                        {' '}当前 +{currentLevel}，关闭强化规则会把等级归零。
+                      </span>
+                    )}
+                  </p>
+                </div>
+              )}
+            </section>
 
             {groupOptions.length > 0 && (
               <FormField

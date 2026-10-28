@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
+  Armchair,
   BarChart3,
   BookOpen,
   ClipboardCheck,
@@ -26,7 +27,9 @@ import {
 import { Skeleton } from '@client/src/components/ui/skeleton';
 import { useRsipOverview } from '@client/src/hooks/useRsipOverview';
 import type {
+  RsipDayLevel,
   RsipFreezeRecord,
+  RsipNamedDay,
   RsipPolicy,
   RsipReviewResult,
   RsipTree,
@@ -56,6 +59,12 @@ import WinReportCelebrateDialog from './components/WinReportCelebrateDialog';
 import StatGem from '@client/src/components/rsip/StatGem';
 import { RARITY_TIERS } from '@client/src/components/rsip/rarity';
 import { cn } from '@client/src/lib/utils';
+
+const DAY_LEVEL_LABEL: Record<RsipDayLevel, string> = {
+  small: '小赢',
+  medium: '中赢',
+  big: '大赢',
+};
 
 const RULES: string[] = [
   '每棵树一个根，树可重命名、可归档',
@@ -294,6 +303,14 @@ const RsipPage: React.FC = () => {
   const needsOnboarding = !settings.onboarded;
 
   const reviewButtonLabel = today.reviewCompleted ? '查看结算' : '开始结算';
+  const namedDays: RsipNamedDay[] = overview.namedDays ?? [];
+  const collapseCountByPolicy = new Map<string, number>();
+  rollbacks.forEach((event) => {
+    collapseCountByPolicy.set(
+      event.triggerPolicyId,
+      (collapseCountByPolicy.get(event.triggerPolicyId) ?? 0) + 1,
+    );
+  });
   const dayNumber: number | null = daysSince(overview.firstUseDate, today.date);
 
   return (
@@ -324,6 +341,12 @@ const RsipPage: React.FC = () => {
           </div>
           <div className="flex items-center gap-2">
             <div className="flex items-center rounded-full border border-border bg-card/70 p-0.5">
+              <ToolbarButton
+                label="专注"
+                icon={<Armchair size={15} />}
+                to="/focus"
+                ariaLabel="打开 CTDP 专注"
+              />
               <ToolbarButton
                 label="喜报"
                 icon={<PartyPopper size={15} />}
@@ -430,6 +453,7 @@ const RsipPage: React.FC = () => {
                 onEditPolicy={openEditor}
                 groups={groups}
                 onManageGroups={() => setGroupManagerOpen(true)}
+                collapseCountByPolicy={collapseCountByPolicy}
               />
             )}
 
@@ -532,6 +556,38 @@ const RsipPage: React.FC = () => {
               </dl>
             </section>
 
+            {namedDays.length > 0 && (
+              <section className="rsip-panel p-4" aria-label="命名日">
+                <h2 className="rsip-ornament font-serif text-xs font-bold tracking-[0.2em] text-gold-soft/90">
+                  赢麻了 · 命名日
+                </h2>
+                <ul className="mt-3 space-y-2">
+                  {namedDays.slice(0, 5).map((day: RsipNamedDay) => (
+                    <li key={day.date} className="flex items-center gap-2 text-xs">
+                      <span className="shrink-0 tabular-nums text-muted-foreground">
+                        {day.date.slice(5)}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-foreground/85">
+                        {day.title}
+                      </span>
+                      <span
+                        className={cn(
+                          'shrink-0 rounded-full px-1.5 py-0.5 text-[10px]',
+                          day.level === 'big'
+                            ? 'bg-gold/25 text-gold-soft'
+                            : day.level === 'medium'
+                              ? 'bg-gold/12 text-gold-soft/85'
+                              : 'bg-muted text-muted-foreground',
+                        )}
+                      >
+                        {DAY_LEVEL_LABEL[day.level]}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
             <section className="rsip-panel p-4" aria-label="规则速览">
               <h2 className="rsip-ornament font-serif text-xs font-bold tracking-[0.2em] text-gold-soft/90">
                 规则速览
@@ -601,6 +657,7 @@ const RsipPage: React.FC = () => {
         overview={overview}
         onClose={() => setReviewOpen(false)}
         onDone={handleReviewDone}
+        onOpenRollbackLog={() => setRollbackLogOpen(true)}
       />
 
       <AttachFlowDialog
@@ -661,6 +718,7 @@ const RsipPage: React.FC = () => {
         open={rollbackLogOpen}
         rollbacks={rollbacks}
         onClose={() => setRollbackLogOpen(false)}
+        onChanged={() => void handleRefresh()}
       />
 
       <TreeCreateDialog
