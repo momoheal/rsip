@@ -107,4 +107,4 @@ npm run dev:client
 
 ## 许可
 
-暂未指定许可证。如需复用，请先与作者联系。
+本项目以 [MIT License](LICENSE) 发布。
