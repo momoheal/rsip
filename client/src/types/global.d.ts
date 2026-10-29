@@ -55,6 +55,8 @@ declare namespace React {
 interface ImportMetaEnv {
   readonly DEV: boolean;
   readonly VITE_DATA_SOURCE?: string;
+  /** 静态托管（GitHub Pages）构建时为 hash，使用 HashRouter */
+  readonly VITE_ROUTER_MODE?: string;
   [key: string]: unknown;
 }
 

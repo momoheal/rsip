@@ -91,6 +91,19 @@ npm run dev:client
 | `npm run stylelint` | 样式检查 |
 | `npm run build:client` | 构建前端 |
 
+## 在线体验
+
+部署在 GitHub Pages：<https://momoheal.github.io/rsip/>
+
+- 仅本地模式可用，数据只存在你的浏览器里，换设备或清除数据不会同步。
+- 路由使用 hash（`#/dashboard`、`#/focus`），刷新页面不会 404。
+
+静态站点由 `.github/workflows/pages.yml` 在 `main` 推送时自动构建部署，构建配置见 `vite.pages.config.ts`（与平台构建的 `vite.config.ts` 分开）。本地验证：
+
+```bash
+npx vite build --config vite.pages.config.ts
+```
+
 ## 设计原则
 
 - **崩塌是特性**：回滚使用中性配色与平和文案，不使用红色或警告式表达。

@@ -1,7 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { createPortal } from 'react-dom';
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter, HashRouter } from 'react-router-dom';
 import { ErrorBoundary } from 'react-error-boundary';
 
 import { AppContainer } from '@lark-apaas/client-toolkit/components/AppContainer';
@@ -29,9 +29,12 @@ function resolveBasePath(): string {
 
 const CLIENT_BASE_PATH = resolveBasePath();
 
+// GitHub Pages 等静态托管没有 SPA 回退，改用 hash 路由；平台构建保持 BrowserRouter
+const Router = import.meta.env.VITE_ROUTER_MODE === 'hash' ? HashRouter : BrowserRouter;
+
 const MainApp = () => {
   return (
-    <BrowserRouter basename={CLIENT_BASE_PATH}>
+    <Router basename={CLIENT_BASE_PATH}>
       <AppContainer defaultTheme="light">
         <ErrorBoundary
           fallbackRender={parameter => (
@@ -45,7 +48,7 @@ const MainApp = () => {
           {createPortal(<Toaster />, document.body)}
         </ErrorBoundary>
       </AppContainer>
-    </BrowserRouter>
+    </Router>
   );
 };
 
