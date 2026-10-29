@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import type {
   RsipDayLevel,
   RsipOverview,
+  RsipPolicy,
   RsipPolicyType,
   RsipReviewResult,
   RsipTree,
@@ -26,15 +27,22 @@ import {
 import { logger } from '@lark-apaas/client-toolkit/logger';
 import PolicyTypeBadge from '@client/src/components/rsip/PolicyTypeBadge';
 import { PolicyIcon } from '@client/src/components/rsip/PolicyIcon';
+import LevelBadge from '@client/src/components/rsip/LevelBadge';
 import { extractErrorMessage, submitReview } from '@client/src/api/rsip';
 import { cn } from '@client/src/lib/utils';
 import MedicalDisclaimer from './MedicalDisclaimer';
 
 type BinaryAnswer = 'yes' | 'no';
-type NoRuling = 'violated' | 'legalized';
+type NoRuling = 'violated' | 'legalized' | 'downgraded';
 
 interface DueNode {
   nodeId: string;
+  policy: RsipPolicy;
+  /** v1.2 强化等级（未设置强化规则为 0） */
+  level: number;
+  stepText: string | null;
+  /** 自身当前连续点亮天数（降回 +0 时清零） */
+  ownStreak: number;
   name: string;
   judge: string;
   trigger: string | null;
@@ -115,6 +123,10 @@ function collectDueNodes(
   if (!node.policy.isRetired && !node.frozenBy) {
     const stake = measureSubtree(node);
     acc.push({
+      policy: node.policy,
+      level: node.policy.upgradable ? (node.policy.level ?? 0) : 0,
+      stepText: node.policy.stepText ?? null,
+      ownStreak: node.progress?.currentStreak ?? 0,
       descendantCount: stake.descendants,
       streakAtStake: stake.streak,
       nodeId: node.nodeId,
@@ -241,7 +253,8 @@ const DailyReviewDialog: React.FC<DailyReviewDialogProps> = ({
   };
 
   const handleRuling = (nodeId: string, value: string): void => {
-    const nextRuling: NoRuling = value === 'violated' ? 'violated' : 'legalized';
+    const nextRuling: NoRuling =
+      value === 'violated' || value === 'downgraded' ? value : 'legalized';
     setRulings((prev: Record<string, NoRuling>) => ({
       ...prev,
       [nodeId]: nextRuling,
@@ -264,7 +277,7 @@ const DailyReviewDialog: React.FC<DailyReviewDialogProps> = ({
       if (answers[node.nodeId] === 'no') {
         verdicts.push({
           nodeId: node.nodeId,
-          verdict: rulings[node.nodeId] === 'violated' ? 'violated' : 'legalized',
+          verdict: rulings[node.nodeId] ?? 'legalized',
         });
         return;
       }
@@ -338,6 +351,20 @@ const DailyReviewDialog: React.FC<DailyReviewDialogProps> = ({
           </div>
         )}
 
+        {(result.downgradedPolicies ?? []).length > 0 && (
+          <div className="rounded-lg border border-border p-4">
+            <p className="text-sm text-foreground">已降回 +0</p>
+            <ul className="mt-2 space-y-1 text-xs leading-relaxed text-muted-foreground">
+              {(result.downgradedPolicies ?? []).map((policyId: string) => (
+                <li key={policyId}>· {nameOf(policyId)}（留在树上，回到基础门槛）</li>
+              ))}
+            </ul>
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+              强化等级就是为这种日子留的余量：失手的是加出来的那几档，基础节点和子国策不受影响。
+            </p>
+          </div>
+        )}
+
         {result.retiredPolicies.length > 0 && (
           <div className="rounded-lg border border-border p-4">
             <p className="text-sm text-foreground">已永久合法化</p>
@@ -396,7 +423,13 @@ const DailyReviewDialog: React.FC<DailyReviewDialogProps> = ({
                   {node.name}
                 </span>
                 <PolicyTypeBadge type={node.type} />
+                <LevelBadge policy={node.policy} />
               </div>
+              {node.level > 0 && (
+                <p className="mt-1 text-xs leading-relaxed text-gold-soft/85">
+                  今天按 +{node.level} 门槛判定：基础门槛平移 {node.level} 档（每档 {node.stepText ?? '一档'}）。
+                </p>
+              )}
               <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
                 判定标准：{node.judge}
               </p>
@@ -469,7 +502,35 @@ const DailyReviewDialog: React.FC<DailyReviewDialogProps> = ({
                           ? `会连带 ${node.descendantCount} 条子国策一起退回手牌；`
                           : '只有这一条退回手牌；'}
                         合计 {node.streakAtStake} 天连续点亮清零，累计天数保留。
+                        {node.level > 0 && ` 这条的强化等级也会归零。`}
                       </p>
+                    )}
+                    {node.level > 0 && (
+                      <>
+                        <div className="flex items-start gap-2">
+                          <RadioGroupItem
+                            value="downgraded"
+                            id={`review-downgraded-${node.nodeId}`}
+                            className="mt-0.5"
+                          />
+                          <Label
+                            htmlFor={`review-downgraded-${node.nodeId}`}
+                            className="text-xs leading-relaxed text-foreground/85"
+                          >
+                            降回 +0（基础门槛做到了，只是没达到 +{node.level}；节点和子国策留在树上）
+                          </Label>
+                        </div>
+                        {ruling === 'downgraded' && (
+                          <p className="ml-6 rounded-md border border-border bg-background/40 px-2.5 py-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                            强化等级 +{node.level} → +0，回到基础门槛；
+                            {node.descendantCount > 0
+                              ? `${node.descendantCount} 条子国策不受影响；`
+                              : ''}
+                            这条的 {node.ownStreak} 天连续点亮清零，累计天数保留。
+                            强化留出的冗余在这里用掉，基础节点不用跟着崩塌。
+                          </p>
+                        )}
+                      </>
                     )}
                     <div className="flex items-start gap-2">
                       <RadioGroupItem

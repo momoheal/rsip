@@ -231,7 +231,7 @@ const PolicyEditorDialog: React.FC<PolicyEditorDialogProps> = ({
         if (!next) onClose();
       }}
     >
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <PolicyIcon
