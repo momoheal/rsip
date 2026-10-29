@@ -185,6 +185,25 @@ const BottomCallout: React.FC<BottomCalloutProps> = ({
   </div>
 );
 
+/** 在全部树里按 nodeId 查找节点（详情弹窗随总览刷新） */
+function findTreeNode(trees: RsipTree[], nodeId: string | null): RsipTreeNode | null {
+  if (!nodeId) return null;
+  const walk = (node: RsipTreeNode | null): RsipTreeNode | null => {
+    if (!node) return null;
+    if (node.nodeId === nodeId) return node;
+    for (const child of node.children) {
+      const found: RsipTreeNode | null = walk(child);
+      if (found) return found;
+    }
+    return null;
+  };
+  for (const tree of trees) {
+    const found: RsipTreeNode | null = walk(tree.root);
+    if (found) return found;
+  }
+  return null;
+}
+
 const RsipPage: React.FC = () => {
   const { overview, loading, error, refresh } = useRsipOverview();
   const [view, setView] = useState<'tree' | 'hand'>('tree');
@@ -204,12 +223,17 @@ const RsipPage: React.FC = () => {
   const [winReportOpen, setWinReportOpen] = useState<boolean>(false);
   const [celebrateOpen, setCelebrateOpen] = useState<boolean>(false);
   const [releaseOpen, setReleaseOpen] = useState<boolean>(false);
-  const [detailNode, setDetailNode] = useState<RsipTreeNode | null>(null);
+  const [detailNodeId, setDetailNodeId] = useState<string | null>(null);
   const [editingPolicy, setEditingPolicy] = useState<RsipPolicy | null>(null);
   const [editingTree, setEditingTree] = useState<RsipTree | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<RsipTree | null>(null);
   const [archiving, setArchiving] = useState<boolean>(false);
   const [celebrateReports, setCelebrateReports] = useState<RsipWinReport[]>([]);
+
+  const detailNode = useMemo<RsipTreeNode | null>(
+    () => findTreeNode(overview?.trees ?? [], detailNodeId),
+    [overview, detailNodeId],
+  );
 
   const pendingReleaseFreeze = useMemo<RsipFreezeRecord | null>(() => {
     if (!overview) return null;
@@ -443,7 +467,7 @@ const RsipPage: React.FC = () => {
                 <TreeView
                   root={selectedTree?.root ?? null}
                   hasTrees={trees.length > 0}
-                  onNodeClick={(node: RsipTreeNode) => setDetailNode(node)}
+                  onNodeClick={(node: RsipTreeNode) => setDetailNodeId(node.nodeId)}
                 />
               </div>
             ) : (
@@ -710,7 +734,12 @@ const RsipPage: React.FC = () => {
         node={detailNode}
         groups={groups}
         onGroupChanged={() => void handleRefresh()}
-        onClose={() => setDetailNode(null)}
+        onUpgraded={() => void handleRefresh()}
+        onEditPolicy={(policy: RsipPolicy) => {
+          setDetailNodeId(null);
+          openEditor(policy);
+        }}
+        onClose={() => setDetailNodeId(null)}
         onOpenRollbackLog={() => setRollbackLogOpen(true)}
       />
 

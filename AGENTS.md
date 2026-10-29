@@ -38,8 +38,20 @@
 4. **赢麻了 · 每日命名**：结算末尾可选用当天最大的喜报命名并定级小赢 / 中赢 / 大赢
    （`RsipReviewSubmitInput.dayTitle/dayLevel`），总览 `namedDays` 返回最近 14 天，侧栏展示。
    平台后端暂未落库（`rsip_daily_reviews` 无对应列），`namedDays` 为可选字段。
-5. **已知差距**：平台后端仍缺 v1.1 字段（杠杆来源、相关性、树 tier、诊断），`tsc -p tsconfig.node.json`
-   有 5 个既有错误；实际运行以本地模式为准。
+5. **可强化国策（强化等级 +N，F3 / PRD §12 决策 1）**：国策可选配强化规则
+   （`RsipPolicy.upgradable / stepText / upgradeAfterStreak`，等级 `level`，本级起点 `levelStreakBase`）。
+   每升一级把判定门槛平移一档；判定标准写基础门槛（+0），第 N 级 = 平移 N 档。本级连续点亮
+   （`currentStreak − levelStreakBase`）达到门槛只提示「可升级」（树卡标记 + 节点详情），
+   用户在节点详情里确认后 level+1，本级重新计数；不自动升级，且国策须在树上。
+   结算时等级 > 0 的国策答「否」多一个处理方式「降回 +0」（`RsipVerdict = 'downgraded'`）：
+   level 归零、节点留树、不级联、不记崩塌日志、不算回滚（不影响清洁结算与今日新增），
+   currentStreak 照常归零、累计天数保留 —— 即原文「储备冗余，保护基础节点」。
+   在 +N 上选「真违反」照常递归回滚，并把触发国策的等级归零（子国策保留各自等级）；
+   编辑器关闭强化规则同样把等级归零。共享逻辑在 `components/rsip/upgrade.ts`，徽记
+   `components/rsip/LevelBadge.tsx`（树卡、手牌卡、详情、结算列表）。仅本地模式：平台后端未落库，
+   字段均为可选，`api/rsip.upgradePolicy` 在平台模式直接报错。
+6. **已知差距**：平台后端仍缺 v1.1 字段（杠杆来源、相关性、树 tier、诊断）与 v1.2 强化等级，
+   `tsc -p tsconfig.node.json` 有 5 个既有错误；实际运行以本地模式为准。
 
 ## 文档修正决策（覆盖 PRD/TechSpec 对应条目，权威）
 
@@ -98,7 +110,7 @@
     TreeSwitcher / TreeCreateDialog / GroupManagerDialog / WinReportListDialog /
     WinReportCelebrateDialog
   - 仪表盘页 `client/src/pages/DashboardPage/`（路由 /dashboard）
-  - 共享 `client/src/components/rsip/`：PolicyTypeBadge / ProgressTrack / PolicyIcon；
+  - 共享 `client/src/components/rsip/`：PolicyTypeBadge / ProgressTrack / PolicyIcon / LevelBadge；
     `client/src/api/rsip/`（API 封装 + templates.ts 模板静态数据）；
     `client/src/hooks/useRsipOverview.ts`（总览数据 hook）
 - 国策图标系统：`rsip_policies.icon_key`（可空）存分类 key，
